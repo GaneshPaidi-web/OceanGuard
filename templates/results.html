@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Detection Results — AquaGuard AI</title>
+  <meta name="description" content="Drowning detection analysis results with risk levels, alert log, and processed video.">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌊</text></svg>">
+</head>
+<body>
+
+<div class="bg-animated" aria-hidden="true"></div>
+
+<!-- Toast container for alert notifications -->
+<div class="toast-container" id="toast-container" role="alert" aria-live="polite"></div>
+
+<!-- ============================================================
+     NAVBAR
+     ============================================================ -->
+<nav class="navbar" role="navigation" aria-label="Main navigation">
+  <a href="/" class="navbar-brand">
+    <div class="brand-icon" aria-hidden="true">🌊</div>
+    Aqua<span class="brand-dot">Guard</span> AI
+  </a>
+  <ul class="navbar-links">
+    <li><a href="/">Upload</a></li>
+    <li><a href="/stream">Live Stream</a></li>
+    <li><a href="/" class="btn-nav">⬆️ New Analysis</a></li>
+  </ul>
+</nav>
+
+<!-- ============================================================
+     MAIN CONTENT
+     ============================================================ -->
+<main>
+<div class="container">
+
+  <!-- Results header -->
+  <header class="results-header">
+    <h1>Analysis Results</h1>
+    <p class="meta">
+      File: <strong>{{ original_name }}</strong>
+      {% if file_type == 'video' %}
+      &mdash; {{ width }}×{{ height }} &mdash; {{ duration }}s &mdash; {{ fps }} FPS
+      {% else %}
+      &mdash; {{ width }}×{{ height }} pixels
+      {% endif %}
+    </p>
+  </header>
+
+  {% if error %}
+  <section class="glass-card" style="padding: var(--space-lg); border-left: 4px solid #ef4444; margin-bottom: var(--space-lg)">
+    <h2 style="margin-bottom: var(--space-sm)">⚠️ Analysis could not be completed</h2>
+    <p style="color: var(--clr-text-muted)">{{ error }}</p>
+    <p class="mt-sm"><a href="/" class="btn-secondary">← Try another file</a></p>
+  </section>
+  {% endif %}
+
+  {% if processing %}
+  <section class="glass-card" style="padding: var(--space-lg); margin-bottom: var(--space-lg)"
+           id="processing-panel" data-job="{{ job_id }}">
+    <h2 style="margin-bottom: var(--space-sm)">🔍 Analysing footage…</h2>
+    <p id="processing-message" style="color: var(--clr-text-muted); margin-bottom: var(--space-md)">
+      {{ 'Queued…' if processing else 'Working…' }}
+    </p>
+    <div class="progress-bar-track" style="height:12px; border-radius:8px; background:rgba(148,163,184,0.2); overflow:hidden">
+      <div id="processing-bar" style="height:100%; width:2%; background:linear-gradient(90deg,#22c55e,#38bdf8); transition:width .3s ease"></div>
+    </div>
+    <p class="mt-sm" style="color: var(--clr-text-muted); font-size:0.85rem">
+      This page updates automatically. D-FINE detection, pose analysis and
+      temporal risk scoring are running.
+    </p>
+  </section>
+  <script>
+    (function pollJob() {
+      const panel = document.getElementById('processing-panel');
+      if (!panel) return;
+      const jobId = panel.dataset.job;
+      const bar = document.getElementById('processing-bar');
+      const msg = document.getElementById('processing-message');
+
+      async function tick() {
+        try {
+          const res = await fetch(`/job/${jobId}`, {cache: 'no-store'});
+          const data = await res.json();
+          const pct = Math.round((data.progress || 0) * 100);
+          if (bar) bar.style.width = Math.max(2, pct) + '%';
+          if (msg) msg.textContent = data.message || 'Working…';
+          if (data.status === 'done' || data.status === 'error') {
+            window.location.reload();
+            return;
+          }
+        } catch (e) { /* retry */ }
+        setTimeout(tick, 1500);
+      }
+      tick();
+    })();
+  </script>
+  {% endif %}
+
+  {% if not processing and not error %}
+
+  <!-- ============================================================
+       STATS ROW
+       ============================================================ -->
+  {% if file_type == 'video' %}
+  <section
+    class="stats-row"
+    aria-label="Detection statistics"
+  >
+
+    <div class="glass-card stat-card stat-drowning">
+      <span class="stat-label">Drowning Events</span>
+      <span class="stat-value">{{ drowning_count | default(0) }}</span>
+      <span class="stat-sub">emergency alerts</span>
+    </div>
+
+    <div class="glass-card stat-card stat-distress">
+      <span class="stat-label">Distress Events</span>
+      <span class="stat-value">{{ distress_count | default(0) }}</span>
+      <span class="stat-sub">needs attention</span>
+    </div>
+
+    <div class="glass-card stat-card stat-normal">
+      <span class="stat-label">Normal</span>
+      <span class="stat-value">{{ normal_count | default(0) }}</span>
+      <span class="stat-sub">safe swimmers</span>
+    </div>
+
+    <div class="glass-card stat-card stat-info">
+      <span class="stat-label">Frames Processed</span>
+      <span class="stat-value">{{ processed_count | default(0) }}</span>
+      <span class="stat-sub">@ {{ output_fps }} FPS</span>
+    </div>
+
+    <div class="glass-card stat-card stat-info">
+      <span class="stat-label">Scene Type</span>
+      <span class="stat-value" style="font-size:1.1rem; margin-top:4px">
+        {{ scene_type | default('Surface') | title }}
+      </span>
+      <span class="stat-sub">{{ conf_threshold | default('0.40') }} confidence threshold</span>
+    </div>
+
+    <div class="glass-card stat-card stat-geofence">
+      <span class="stat-label">Geofence Breaches</span>
+      <span class="stat-value">{{ geofence_count | default(0) }}</span>
+      <span class="stat-sub">rip-current risk</span>
+    </div>
+
+  </section>
+  {% endif %}
+
+
+  <!-- ============================================================
+       VIDEO / IMAGE DISPLAY
+       ============================================================ -->
+  <section class="video-section" aria-label="Video comparison">
+
+    {% if file_type == 'image' %}
+
+      <div class="glass-card video-panel">
+        <span class="video-panel-label">🖼️ Analysed Image — {{ width }}×{{ height }}</span>
+        <img
+          id="result-image"
+          src="{{ url_for('output_file', filename=output_name) if output_name else url_for('uploaded_file', filename=filename) }}"
+          alt="Uploaded image with drowning-risk analysis"
+          loading="lazy"
+        >
+      </div>
+
+      <div class="stats-row mt-md" aria-label="Image detection statistics">
+        <div class="glass-card stat-card stat-drowning">
+          <span class="stat-label">Drowning / Distress</span>
+          <span class="stat-value">{{ drowning_count | default(0) + distress_count | default(0) }}</span>
+          <span class="stat-sub">people flagged</span>
+        </div>
+        <div class="glass-card stat-card stat-normal">
+          <span class="stat-label">Normal</span>
+          <span class="stat-value">{{ normal_count | default(0) }}</span>
+          <span class="stat-sub">safe</span>
+        </div>
+        <div class="glass-card stat-card stat-info">
+          <span class="stat-label">People Detected</span>
+          <span class="stat-value">{{ stats.unique_tracks | default(0) }}</span>
+          <span class="stat-sub">in this frame</span>
+        </div>
+        <div class="glass-card stat-card stat-info">
+          <span class="stat-label">Scene Type</span>
+          <span class="stat-value" style="font-size:1.1rem; margin-top:4px">
+            {{ scene_type | default('Surface') | title }}
+          </span>
+          <span class="stat-sub">{{ conf_threshold }} threshold</span>
+        </div>
+      </div>
+
+    {% else %}
+
+      <div class="video-grid">
+
+        <!-- Original -->
+        <div class="glass-card video-panel">
+          <span class="video-panel-label">📹 Original Footage</span>
+          <video
+            id="original-video"
+            controls
+            preload="metadata"
+            aria-label="Original uploaded video"
+          >
+            <source src="{{ url_for('uploaded_file', filename=filename) }}">
+            Your browser does not support HTML5 video.
+          </video>
+        </div>
+
+        <!-- Processed -->
+        <div class="glass-card video-panel">
+          <span class="video-panel-label">🔍 Processed — Drowning Detection Overlay</span>
+          {% if output_name %}
+            <video
+              id="processed-video"
+              controls
+              preload="metadata"
+              aria-label="Processed video with drowning detection overlay"
+            >
+              <source
+                src="{{ url_for('output_file', filename=output_name) }}"
+                type="video/mp4"
+              >
+              Your browser does not support HTML5 video.
+            </video>
+          {% else %}
+            <div class="empty-state">
+              <div class="empty-icon" aria-hidden="true">⏳</div>
+              <p>Video is being processed…</p>
+            </div>
+          {% endif %}
+        </div>
+
+      </div>
+
+      {% if preview_name %}
+        <div class="glass-card video-panel mt-md">
+          <span class="video-panel-label">🖼️ First Processed Frame</span>
+          <img
+            src="{{ url_for('output_file', filename=preview_name) }}"
+            alt="First processed frame with detection overlay"
+            loading="lazy"
+          >
+        </div>
+      {% endif %}
+
+    {% endif %}
+
+  </section>
+
+
+  <!-- ============================================================
+       ALERT LOG TABLE
+       ============================================================ -->
+  <section class="alert-section glass-card" aria-labelledby="alert-log-heading">
+
+    <div style="padding: var(--space-md) var(--space-lg) var(--space-sm)">
+      <h2 id="alert-log-heading" class="section-title" style="margin-bottom:0">
+        🚨 Alert Log
+        {% if alerts %}
+          <span style="font-size:0.9rem; font-weight:500; color: var(--clr-text-muted); margin-left:0.5rem">
+            ({{ alerts|length }} event{{ 's' if alerts|length != 1 }})
+          </span>
+        {% endif %}
+      </h2>
+    </div>
+
+    {% if alerts %}
+      <div class="alert-table-wrap">
+        <table class="alert-table" role="table" aria-label="Drowning detection alert log">
+          <thead>
+            <tr>
+              <th scope="col">Time</th>
+              <th scope="col">Frame</th>
+              <th scope="col">Track ID</th>
+              <th scope="col">Risk Level</th>
+              <th scope="col">Confidence</th>
+              <th scope="col">Reasons</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for alert in alerts %}
+              <tr
+                data-alert-row
+                data-risk="{{ alert.risk_level }}"
+                data-tid="{{ alert.track_id }}"
+                data-ts="{{ alert.timestamp }}"
+                data-reason="{{ alert.reasons | default('') }}"
+              >
+                <td>{{ alert.timestamp }}s</td>
+                <td>{{ alert.frame }}</td>
+                <td>#{{ alert.track_id }}</td>
+                <td>
+                  <span class="risk-badge {{ alert.risk_level | lower }}">
+                    {% if alert.risk_level == 'DROWNING' %}🚨{% elif alert.risk_level == 'DISTRESS' %}⚠️{% elif alert.risk_level == 'GEOFENCE' %}🚧{% else %}✅{% endif %}
+                    {{ alert.risk_level }}
+                  </span>
+                </td>
+                <td>{{ (alert.confidence * 100) | round(0) | int }}%</td>
+                <td style="max-width:360px; word-wrap:break-word">
+                  {{ alert.reasons | default('—') }}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- CSV download -->
+      {% if alerts_csv_name or csv_name %}
+        <div style="padding: var(--space-md) var(--space-lg); display:flex; gap:12px; flex-wrap:wrap">
+          {% if alerts_csv_name %}
+          <a
+            href="{{ url_for('output_file', filename=alerts_csv_name) }}"
+            class="btn-secondary"
+            download
+            aria-label="Download alert log as CSV"
+          >
+            ⬇️ Download Alert CSV
+          </a>
+          {% endif %}
+          {% if csv_name %}
+          <a
+            href="{{ url_for('output_file', filename=csv_name) }}"
+            class="btn-secondary"
+            download
+            aria-label="Download full detection log as CSV"
+          >
+            ⬇️ Download Detection CSV
+          </a>
+          {% endif %}
+        </div>
+      {% endif %}
+
+    {% else %}
+
+      <div class="empty-state">
+        <div class="empty-icon" aria-hidden="true">✅</div>
+        <p><strong>No drowning or distress events detected.</strong></p>
+        <p class="mt-sm" style="color: var(--clr-text-muted)">
+          All tracked persons showed normal movement patterns.
+        </p>
+      </div>
+
+    {% endif %}
+
+  </section>
+
+  <!-- ============================================================
+       TRACK SUMMARY
+       ============================================================ -->
+  {% if tracks %}
+  <section class="glass-card mt-md" aria-labelledby="track-heading">
+    <div style="padding: var(--space-md) var(--space-lg) var(--space-sm)">
+      <h2 id="track-heading" class="section-title" style="margin-bottom:0">
+        👥 Track Summary
+        <span style="font-size:0.9rem; font-weight:500; color: var(--clr-text-muted); margin-left:0.5rem">
+          ({{ tracks|length }} tracked {{ 'person' if tracks|length == 1 else 'people' }})
+        </span>
+      </h2>
+    </div>
+    <div class="alert-table-wrap">
+      <table class="alert-table" role="table" aria-label="Per-person risk summary">
+        <thead>
+          <tr>
+            <th scope="col">Track</th>
+            <th scope="col">Max Risk</th>
+            <th scope="col">In Water</th>
+            <th scope="col">Geofence</th>
+            <th scope="col">First Seen</th>
+            <th scope="col">Last Seen</th>
+            <th scope="col">Reason</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for track in tracks %}
+          <tr>
+            <td>#{{ track.track_id }}</td>
+            <td>
+              <span class="risk-badge {{ track.max_risk | lower }}">
+                {% if track.max_risk == 'DROWNING' %}🚨{% elif track.max_risk == 'DISTRESS' %}⚠️{% else %}✅{% endif %}
+                {{ track.max_risk }}
+              </span>
+            </td>
+            <td>{{ '🌊 Yes' if track.in_water else '🏖️ No' }}</td>
+            <td>{{ '🚧 Breached' if track.geofence else '—' }}</td>
+            <td>{{ track.first_seen }}s</td>
+            <td>{{ track.last_seen }}s</td>
+            <td style="max-width:360px; word-wrap:break-word">
+              {{ track.reasons | join('; ') if track.reasons else '—' }}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+
+  <!-- ============================================================
+       VIDEO METADATA (collapsed info)
+       ============================================================ -->
+  {% if file_type == 'video' %}
+  <details class="glass-card mt-md" style="padding: var(--space-md) var(--space-lg)">
+    <summary style="cursor:pointer; font-weight:600; color: var(--clr-text-secondary); font-size:0.875rem">
+      📋 Processing Details
+    </summary>
+    <table style="margin-top: var(--space-md); width:100%; font-size:0.82rem; font-family: var(--font-mono); border-collapse:collapse;">
+      <tr><td style="padding:4px 0; color: var(--clr-text-muted); width:200px">Resolution</td><td>{{ width }}×{{ height }}</td></tr>
+      <tr><td style="padding:4px 0; color: var(--clr-text-muted)">Source FPS</td><td>{{ fps }}</td></tr>
+      <tr><td style="padding:4px 0; color: var(--clr-text-muted)">Processing FPS</td><td>{{ output_fps }}</td></tr>
+      <tr><td style="padding:4px 0; color: var(--clr-text-muted)">Source Frames</td><td>{{ frame_count }}</td></tr>
+      <tr><td style="padding:4px 0; color: var(--clr-text-muted)">Processed Frames</td><td>{{ processed_count }}</td></tr>
+      <tr><td style="padding:4px 0; color: var(--clr-text-muted)">Duration</td><td>{{ duration }}s</td></tr>
+      <tr><td style="padding:4px 0; color: var(--clr-text-muted)">Scene Type</td><td>{{ scene_type | default('surface') | title }}</td></tr>
+      <tr><td style="padding:4px 0; color: var(--clr-text-muted)">Conf. Threshold</td><td>{{ conf_threshold | default('0.40') }}</td></tr>
+      <tr><td style="padding:4px 0; color: var(--clr-text-muted)">Unique People</td><td>{{ stats.unique_tracks | default(0) }}</td></tr>
+      <tr><td style="padding:4px 0; color: var(--clr-text-muted)">Total Detections</td><td>{{ stats.total_detections | default(0) }}</td></tr>
+      <tr><td style="padding:4px 0; color: var(--clr-text-muted)">Processing Time</td><td>{{ stats.elapsed_seconds | default(0) }}s @ {{ stats.throughput_fps | default(0) }} sampled FPS</td></tr>
+    </table>
+  </details>
+  {% endif %}
+
+  {% endif %}<!-- not processing / not error -->
+
+  <!-- Back button -->
+  <div class="mt-lg mb-lg flex gap-sm">
+    <a href="/" class="btn-secondary">
+      ← Analyse Another File
+    </a>
+    <a href="/stream" class="btn-secondary">
+      📡 Go Live
+    </a>
+  </div>
+
+</div>
+</main>
+
+<!-- ============================================================
+     FOOTER
+     ============================================================ -->
+<footer role="contentinfo">
+  <span>🌊 AquaGuard AI — Drowning Detection System</span>
+  <span>Powered by D-FINE · MediaPipe · Flask</span>
+</footer>
+
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

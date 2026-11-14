@@ -1,0 +1,46 @@
+# AquaGuard pipeline configuration
+# ================================
+# Values here are defaults; environment variables override them:
+#   DFINE_ONNX, POSE_MODEL, BATCH_SIZE, ENABLE_TTA, SAMPLE_FPS,
+#   MAX_UPLOAD_MB, STREAM_SOURCE, HOST, PORT
+#
+# Select a different file with AQUAGUARD_CONFIG=/path/to/file.yaml
+# or `python video_processor.py --config ...`.
+
+detector:
+  # Fine-tuned models usually improve small-person recall; point this at
+  # models/dfine_s_drowning.onnx after running tools/train_dfine.py.
+  onnx: models/dfine_s_coco.onnx
+  pose: models/pose_landmarker_lite.task
+  batch_size: 8            # tiles per ONNX call (lower on small RAM)
+  tta: false               # horizontal-flip test-time augmentation (slower)
+  overlap: 0.18            # tile overlap fraction for large frames
+  tile_w: null             # null = auto from frame size
+  tile_h: null
+  enable_sonar: true
+  enable_water_mask: true
+  max_pose_tracks: 8       # largest in-water people get MediaPipe each frame
+  use_learned_risk_model: true
+
+processing:
+  sample_fps: 2.0          # 2 frames/s is enough for drowning behaviour
+  max_upload_mb: 500
+  force_underwater: false  # override scene detection for murky footage
+
+stream:
+  source: ""               # "" -> webcam 0; or RTSP URL / video path / "0"
+  max_width: 960
+  min_process_interval: 0.7
+
+geofence:
+  # Rip-current / open-water geofencing. Zones, timing and boat exclusion
+  # live in configs/geofence.json (the Live Stream page can draw and save
+  # zones there). Set enabled: true here to force it on, false to force it
+  # off, or leave null to obey "enabled" inside geofence.json.
+  enabled: null
+  config_file: configs/geofence.json
+
+server:
+  host: 127.0.0.1
+  port: 5000
+  secret_key: aquaguard-development-key

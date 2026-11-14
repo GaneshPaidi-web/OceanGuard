@@ -1,0 +1,32 @@
+# AquaGuard AI — runtime dependencies
+# ==================================
+# Python 3.10+ recommended (developed on 3.12).
+#
+# CPU install:
+#   pip install -r requirements.txt
+#
+# GPU inference (optional, replaces onnxruntime):
+#   pip install onnxruntime-gpu
+#
+# Fine-tuning D-FINE additionally needs the packages in
+# D-FINE/requirements.txt plus a CUDA GPU (see README).
+
+numpy>=1.26,<3
+opencv-python>=4.9,<6
+onnxruntime>=1.17,<2
+mediapipe>=0.10.14
+flask>=3.0,<4
+werkzeug>=3.0,<4
+pyyaml>=6.0
+scikit-learn>=1.3,<2
+scipy>=1.10,<2
+pillow>=10.0
+
+# Optional extras used by the dataset tools (uncomment as needed):
+# torch>=2.2
+# torchvision>=0.17
+# onnx>=1.16
+# onnxsim>=0.4.36
+# kagglehub>=0.3
+# roboflow>=1.1
+# pytest>=8

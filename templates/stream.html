@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Live Stream — AquaGuard AI</title>
+  <meta name="description" content="Live drowning detection dashboard for beach, pool, underwater and sonar cameras.">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌊</text></svg>">
+</head>
+<body>
+
+<div class="bg-animated" aria-hidden="true"></div>
+<div class="toast-container" id="toast-container" role="alert" aria-live="polite"></div>
+
+<nav class="navbar" role="navigation" aria-label="Main navigation">
+  <a href="/" class="navbar-brand">
+    <div class="brand-icon" aria-hidden="true">🌊</div>
+    Aqua<span class="brand-dot">Guard</span> AI
+  </a>
+  <ul class="navbar-links">
+    <li><a href="/">Upload</a></li>
+    <li><a href="/stream">Live Stream</a></li>
+    <li><a href="/" class="btn-nav">⬆️ New Analysis</a></li>
+  </ul>
+</nav>
+
+<main>
+<div class="container">
+
+  <header class="results-header">
+    <h1>Live Safety Monitor</h1>
+    <p class="meta">
+      Real-time detection feed &mdash;
+      <span id="stream-status-text" style="font-family:var(--font-mono); color:var(--clr-normal)">STOPPED</span>
+      <span class="pulse-dot" aria-hidden="true" style="margin-left:8px"></span>
+    </p>
+    <p style="color:var(--clr-text-muted); font-size:0.9rem">
+      The pipeline analyses each frame with D-FINE (no YOLO), water segmentation,
+      MediaPipe pose and the temporal risk engine. Source is configured with the
+      <code>STREAM_SOURCE</code> environment variable (webcam index or video path).
+    </p>
+  </header>
+
+  <section class="glass-card video-panel" style="margin-bottom: var(--space-lg)">
+    <span class="video-panel-label">📡 Annotated Live Feed</span>
+    <div id="geofence-stage" style="position:relative; display:block; line-height:0; max-width:100%;">
+      <img
+        id="stream-feed-img"
+        alt="Live drowning detection feed"
+        style="width:100%; min-height:280px; background:#0b1220; border-radius:12px; display:block;"
+      >
+      <canvas
+        id="geofence-canvas"
+        aria-label="Geofence drawing canvas"
+        style="position:absolute; left:0; top:0; border-radius:12px; cursor:crosshair;"
+      ></canvas>
+    </div>
+
+    <div class="flex gap-sm mt-md" style="display:flex; gap:12px; flex-wrap:wrap">
+      <button id="btn-start-stream" class="btn-primary" type="button">▶️ Start Stream</button>
+      <button id="btn-stop-stream" class="btn-secondary hidden" type="button">⏹️ Stop Stream</button>
+    </div>
+  </section>
+
+  <section class="glass-card" style="margin-bottom: var(--space-lg); padding: var(--space-md) var(--space-lg)">
+    <h2 class="section-title" style="margin-bottom: var(--space-sm)">🚧 Geofence — Rip-Current Safety</h2>
+    <p style="color:var(--clr-text-muted); font-size:0.9rem; margin-bottom: var(--space-md)">
+      Click the live frame to outline the <strong>safe swimming area</strong> or an explicit
+      <strong>danger / rip-current channel</strong>. A person outside the safe area (or inside
+      the danger area) for 1.5&nbsp;s raises a geofence alert. People on boats and
+      surfboards are ignored automatically.
+    </p>
+    <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:10px">
+      <button id="btn-draw-safe" class="btn-secondary" type="button">🟢 Draw safe zone</button>
+      <button id="btn-draw-danger" class="btn-secondary" type="button">🔴 Draw danger zone</button>
+      <button id="btn-undo-point" class="btn-secondary" type="button">↩️ Undo point</button>
+      <button id="btn-clear-geofence" class="btn-secondary" type="button">🗑️ Clear all zones</button>
+      <label style="display:flex; align-items:center; gap:6px; color:var(--clr-text-muted); font-size:0.9rem">
+        <input type="checkbox" id="geofence-enabled"> Enabled
+      </label>
+      <button id="btn-save-geofence" class="btn-primary" type="button">💾 Save geofence</button>
+      <span id="geofence-status" role="status" aria-live="polite"
+            style="color:var(--clr-text-muted); font-size:0.85rem"></span>
+    </div>
+    <p style="color:var(--clr-text-muted); font-size:0.8rem; margin:0">
+      Tip: start the stream first so you can see the camera view while drawing.
+      Points are stored as normalised coordinates, so they work at any resolution.
+    </p>
+  </section>
+
+
+  <section class="stats-row" aria-label="Live statistics">
+    <div class="glass-card stat-card stat-drowning">
+      <span class="stat-label">Live Alerts</span>
+      <span class="stat-value" id="live-alert-count">0</span>
+      <span class="stat-sub">this session</span>
+    </div>
+    <div class="glass-card stat-card stat-info">
+      <span class="stat-label">Mode</span>
+      <span class="stat-value" style="font-size:1.1rem; margin-top:4px">D-FINE + Pose</span>
+      <span class="stat-sub">water-gated risk engine</span>
+    </div>
+    <div class="glass-card stat-card stat-normal">
+      <span class="stat-label">Refresh</span>
+      <span class="stat-value" style="font-size:1.1rem; margin-top:4px">1.5s</span>
+      <span class="stat-sub">alert polling</span>
+    </div>
+  </section>
+
+  <section class="alert-section glass-card mt-md" aria-labelledby="live-alert-heading">
+    <div style="padding: var(--space-md) var(--space-lg) var(--space-sm)">
+      <h2 id="live-alert-heading" class="section-title" style="margin-bottom:0">🚨 Live Alert Log</h2>
+    </div>
+    <div class="alert-table-wrap">
+      <table class="alert-table" role="table" aria-label="Live alert log">
+        <thead>
+          <tr>
+            <th scope="col">Time</th>
+            <th scope="col">Risk Level</th>
+            <th scope="col">Track</th>
+            <th scope="col">Reasons</th>
+          </tr>
+        </thead>
+        <tbody id="stream-alert-tbody">
+          <tr><td colspan="4" style="text-align:center; color:var(--clr-text-muted)">No alerts yet.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="mt-lg mb-lg flex gap-sm" style="display:flex; gap:12px; flex-wrap:wrap">
+    <a href="/" class="btn-secondary">← Analyse a File</a>
+  </div>
+
+</div>
+</main>
+
+<footer role="contentinfo">
+  <span>🌊 AquaGuard AI — Drowning Detection System</span>
+  <span>Powered by D-FINE · MediaPipe · Flask</span>
+</footer>
+
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

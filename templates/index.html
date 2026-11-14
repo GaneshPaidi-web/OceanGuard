@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Drowning Detection System — AI-Powered Aquatic Safety</title>
+  <meta name="description" content="AI-powered drowning detection for beaches and pools using D-FINE object detection and MediaPipe pose estimation. Upload CCTV or sonar footage for instant analysis.">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌊</text></svg>">
+</head>
+<body>
+
+<!-- Animated background -->
+<div class="bg-animated" aria-hidden="true"></div>
+
+<!-- Toast notification container -->
+<div class="toast-container" id="toast-container" role="alert" aria-live="polite"></div>
+
+<!-- ============================================================
+     NAVBAR
+     ============================================================ -->
+<nav class="navbar" role="navigation" aria-label="Main navigation">
+  <a href="/" class="navbar-brand">
+    <div class="brand-icon" aria-hidden="true">🌊</div>
+    Aqua<span class="brand-dot">Guard</span> AI
+  </a>
+  <ul class="navbar-links">
+    <li><a href="/">Upload</a></li>
+    <li><a href="/stream">Live Stream</a></li>
+    <li><a href="#how-it-works">How it works</a></li>
+    <li><a href="/stream" class="btn-nav">📡 Go Live</a></li>
+  </ul>
+</nav>
+
+<!-- ============================================================
+     HERO
+     ============================================================ -->
+<header class="hero" role="banner">
+  <div class="hero-badge">
+    <span class="pulse-dot" aria-hidden="true"></span>
+    Real-time AI drowning detection
+  </div>
+
+  <h1>Save Lives at Sea<br>with Intelligent Vision</h1>
+
+  <p class="subtitle">
+    Upload beach CCTV or underwater sonar footage. Our AI detects
+    swimmers in distress using D-FINE detection + MediaPipe pose analysis
+    — no YOLO required.
+  </p>
+
+  <div class="feature-row" role="list">
+    <span class="feature-chip" role="listitem">
+      <span class="chip-icon" aria-hidden="true">🎯</span>
+      D-FINE-S High Accuracy
+    </span>
+    <span class="feature-chip" role="listitem">
+      <span class="chip-icon" aria-hidden="true">🦴</span>
+      Pose Analysis
+    </span>
+    <span class="feature-chip" role="listitem">
+      <span class="chip-icon" aria-hidden="true">🌊</span>
+      Underwater Mode
+    </span>
+    <span class="feature-chip" role="listitem">
+      <span class="chip-icon" aria-hidden="true">📡</span>
+      Live Streaming
+    </span>
+    <span class="feature-chip" role="listitem">
+      <span class="chip-icon" aria-hidden="true">🔔</span>
+      Instant Alerts
+    </span>
+  </div>
+
+  <!-- Wave SVG -->
+  <div class="wave-container" aria-hidden="true">
+    <svg class="wave wave-1" viewBox="0 0 1440 120" preserveAspectRatio="none">
+      <path d="M0,60 C240,100 480,20 720,60 C960,100 1200,20 1440,60 L1440,120 L0,120 Z"/>
+    </svg>
+    <svg class="wave wave-2" viewBox="0 0 1440 120" preserveAspectRatio="none">
+      <path d="M0,80 C360,20 720,100 1080,40 C1260,20 1360,80 1440,60 L1440,120 L0,120 Z"/>
+    </svg>
+  </div>
+</header>
+
+<!-- ============================================================
+     UPLOAD SECTION
+     ============================================================ -->
+<main>
+  <section class="upload-section container-narrow" aria-labelledby="upload-heading">
+
+    <!-- Flash messages -->
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <div class="flash-container" role="alert">
+          {% for message in messages %}
+            <div class="flash-message">
+              <span aria-hidden="true">⚠️</span>
+              {{ message }}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <div class="glass-card upload-card">
+      <form
+        id="upload-form"
+        action="/upload"
+        method="POST"
+        enctype="multipart/form-data"
+        aria-labelledby="upload-heading"
+      >
+
+        <!-- Drop Zone -->
+        <div
+          class="upload-zone"
+          id="upload-zone"
+          role="button"
+          tabindex="0"
+          aria-label="Click or drag and drop a video or image file here"
+        >
+          <input
+            type="file"
+            id="file-input"
+            name="file"
+            accept="image/jpeg,image/png,video/mp4,video/avi,video/quicktime,video/x-matroska"
+            required
+            aria-label="Upload file"
+          >
+
+          <div class="upload-icon-wrap" aria-hidden="true">📂</div>
+
+          <h2 id="upload-heading">Drop your footage here</h2>
+          <p>
+            <span class="accent">Click to browse</span> or drag & drop a file
+          </p>
+          <p>Supports: MP4, AVI, MOV, MKV, JPG, PNG &middot; Max 500 MB</p>
+        </div>
+
+        <!-- File selected banner -->
+        <div
+          class="file-selected-banner"
+          id="file-selected-banner"
+          role="status"
+          aria-live="polite"
+        >
+          <span aria-hidden="true">✅</span>
+          <span id="selected-file-name">File selected</span>
+        </div>
+
+        <!-- Options -->
+        <div class="upload-options mt-md">
+          <label class="option-toggle">
+            <input type="checkbox" id="opt-underwater" name="force_underwater" value="1">
+            🌊 Force underwater mode
+          </label>
+          <label class="option-toggle">
+            <input type="checkbox" id="opt-enhance" name="enhance" value="1" checked>
+            ✨ Enable contrast enhancement
+          </label>
+          <label class="option-toggle">
+            Sampling:
+            <select name="sample_fps" id="opt-sample-fps" aria-label="Frame sampling rate">
+              <option value="1">1 FPS (fastest)</option>
+              <option value="2" selected>2 FPS (balanced)</option>
+              <option value="4">4 FPS (detailed)</option>
+            </select>
+          </label>
+        </div>
+
+        <!-- Progress bar -->
+        <div
+          class="progress-container"
+          id="progress-container"
+          role="progressbar"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          aria-valuenow="0"
+        >
+          <div class="progress-label">
+            <span id="progress-text">Uploading…</span>
+            <span id="progress-pct">0%</span>
+          </div>
+          <div class="progress-bar-track">
+            <div class="progress-bar-fill" id="progress-fill" style="width:0%"></div>
+          </div>
+        </div>
+
+        <button
+          type="submit"
+          class="btn-primary"
+          id="submit-btn"
+        >
+          <span aria-hidden="true">🔍</span>
+          Analyse for Drowning Risk
+        </button>
+
+      </form>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       HOW IT WORKS
+       ============================================================ -->
+  <section
+    class="info-section container"
+    id="how-it-works"
+    aria-labelledby="how-it-works-heading"
+  >
+    <h2 class="section-title" id="how-it-works-heading">
+      How <span class="accent">AquaGuard AI</span> Works
+    </h2>
+
+    <div class="info-grid">
+
+      <article class="glass-card info-card">
+        <span class="step-number">Step 01</span>
+        <span class="step-icon" aria-hidden="true">📡</span>
+        <h3>Scene Detection</h3>
+        <p>Automatically identifies surface CCTV, underwater RGB, or sonar grayscale footage and applies tailored pre-processing.</p>
+      </article>
+
+      <article class="glass-card info-card">
+        <span class="step-number">Step 02</span>
+        <span class="step-icon" aria-hidden="true">🎯</span>
+        <h3>D-FINE Person Detection</h3>
+        <p>Tiled D-FINE-S ONNX model scans the full frame with 25% overlap tiles for maximum detection recall.</p>
+      </article>
+
+      <article class="glass-card info-card">
+        <span class="step-number">Step 03</span>
+        <span class="step-icon" aria-hidden="true">🦴</span>
+        <h3>Pose Estimation</h3>
+        <p>MediaPipe extracts 33 body landmarks per person — shoulder tilt, head position, arm asymmetry, and visibility score.</p>
+      </article>
+
+      <article class="glass-card info-card">
+        <span class="step-number">Step 04</span>
+        <span class="step-icon" aria-hidden="true">🧠</span>
+        <h3>Risk Classification</h3>
+        <p>Seven drowning indicators are fused — body angle, stationary duration, thrashing asymmetry, and submersion — to output NORMAL / DISTRESS / DROWNING.</p>
+      </article>
+
+      <article class="glass-card info-card">
+        <span class="step-number">Step 05</span>
+        <span class="step-icon" aria-hidden="true">🔔</span>
+        <h3>Instant Alerts</h3>
+        <p>Color-coded bounding boxes, alert banner overlays, audio beeps, and downloadable alert CSV export.</p>
+      </article>
+
+    </div>
+
+    <!-- Risk legend -->
+    <div class="feature-row mt-lg" role="list">
+      <span class="feature-chip" role="listitem" style="border-color: rgba(34,197,94,0.4)">
+        <span style="color:#22c55e">●</span> NORMAL — Safe swimmer
+      </span>
+      <span class="feature-chip" role="listitem" style="border-color: rgba(245,158,11,0.4)">
+        <span style="color:#f59e0b">●</span> DISTRESS — Needs attention
+      </span>
+      <span class="feature-chip" role="listitem" style="border-color: rgba(239,68,68,0.4)">
+        <span style="color:#ef4444">●</span> DROWNING — Emergency!
+      </span>
+      <span class="feature-chip" role="listitem">
+        <span style="color:#94a3b8">●</span> UNKNOWN — Building track
+      </span>
+    </div>
+  </section>
+</main>
+
+<!-- ============================================================
+     FOOTER
+     ============================================================ -->
+<footer role="contentinfo">
+  <span>🌊 AquaGuard AI — Drowning Detection System</span>
+  <span>Powered by D-FINE · MediaPipe · Flask</span>
+</footer>
+
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

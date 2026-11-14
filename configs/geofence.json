@@ -1,0 +1,14 @@
+{
+  "enabled": true,
+  "dynamic_water_mode": true,
+  "dynamic_water_threshold": 0.30,
+  "water_offset_ratio": 0.025,
+  "anchor": "feet",
+  "hold_seconds": 1.0,
+  "clear_seconds": 2.0,
+  "require_in_water": true,
+  "min_water_ratio": 0.25,
+  "exclude_platforms": true,
+  "platform_class_ids": [8, 37],
+  "zones": []
+}
